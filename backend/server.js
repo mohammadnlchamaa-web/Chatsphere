@@ -6,10 +6,23 @@ const http = require("http");
 const { Server } = require("socket.io");
 
 const app = express();
-app.use(cors());
+const server = http.createServer(app);
+
+/* =======================
+   CORS (FIXED PROPERLY)
+======================= */
+app.use(
+  cors({
+    origin: "https://chatsphere-mu.vercel.app",
+    credentials: true,
+  })
+);
+
 app.use(express.json());
 
-// ROUTES
+/* =======================
+   ROUTES
+======================= */
 const authRoutes = require("./routes/authRoutes");
 const friendRoutes = require("./routes/friendRoutes");
 const messageRoutes = require("./routes/messageRoutes");
@@ -18,45 +31,50 @@ app.use("/api/auth", authRoutes);
 app.use("/api/friends", friendRoutes);
 app.use("/api/messages", messageRoutes);
 
-// SERVER
-const server = http.createServer(app);
-
+/* =======================
+   SOCKET.IO (FIXED)
+======================= */
 const io = new Server(server, {
   cors: {
-  origin: "*",
-  methods: ["GET", "POST"]
-}
+    origin: "https://chatsphere-mu.vercel.app",
+    methods: ["GET", "POST"],
+    credentials: true,
+  },
 });
 
-// MODELS
 const Message = require("./models/Message");
 
 const onlineUsers = new Map();
 
-/* SOCKET */
 io.on("connection", (socket) => {
   console.log("User connected:", socket.id);
 
-  // ONLINE USERS
+  // USER ONLINE
   socket.on("online", (userId) => {
+    if (!userId) return;
+
     onlineUsers.set(userId, socket.id);
+
     io.emit("online_users", Array.from(onlineUsers.keys()));
   });
 
   // SEND MESSAGE
   socket.on("send_message", async ({ senderId, receiverId, message }) => {
+    try {
+      const msg = await Message.create({
+        senderId,
+        receiverId,
+        message,
+        seen: false,
+      });
 
-    const msg = await Message.create({
-      senderId,
-      receiverId,
-      message,
-      seen: false
-    });
+      const receiverSocket = onlineUsers.get(receiverId);
 
-    const receiverSocket = onlineUsers.get(receiverId);
-
-    if (receiverSocket) {
-      io.to(receiverSocket).emit("receive_message", msg);
+      if (receiverSocket) {
+        io.to(receiverSocket).emit("receive_message", msg);
+      }
+    } catch (err) {
+      console.log("Send message error:", err.message);
     }
   });
 
@@ -71,7 +89,7 @@ io.on("connection", (socket) => {
 
   // DISCONNECT
   socket.on("disconnect", () => {
-    for (let [uid, sid] of onlineUsers) {
+    for (let [uid, sid] of onlineUsers.entries()) {
       if (sid === socket.id) {
         onlineUsers.delete(uid);
         break;
@@ -82,13 +100,18 @@ io.on("connection", (socket) => {
   });
 });
 
-/* DB */
-mongoose.connect(process.env.MONGO_URI)
+/* =======================
+   MONGO + SERVER START
+======================= */
+const PORT = process.env.PORT || 5000;
+
+mongoose
+  .connect(process.env.MONGO_URI)
   .then(() => {
     console.log("MongoDB Connected ✅");
- server.listen(PORT, () => {
-  console.log("Server running on", PORT);
- });
+
+    server.listen(PORT, () => {
+      console.log(`Server running on ${PORT}`);
+    });
   })
-  .catch(err => console.log(err));
-  const PORT = process.env.PORT || 5000;
+  .catch((err) => console.log("Mongo Error:", err));
