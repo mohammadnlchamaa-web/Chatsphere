@@ -1,5 +1,4 @@
 require("dotenv").config();
-
 const express = require("express");
 const cors = require("cors");
 const mongoose = require("mongoose");
@@ -23,7 +22,10 @@ app.use("/api/messages", messageRoutes);
 const server = http.createServer(app);
 
 const io = new Server(server, {
-  cors: { origin: "*" }
+  cors: {
+  origin: "*",
+  methods: ["GET", "POST"]
+}
 });
 
 // MODELS
@@ -84,9 +86,9 @@ io.on("connection", (socket) => {
 mongoose.connect(process.env.MONGO_URI)
   .then(() => {
     console.log("MongoDB Connected ✅");
-
-    server.listen(process.env.PORT || 5000, () => {
-      console.log("Server running on port 5000");
-    });
+ server.listen(PORT, () => {
+  console.log("Server running on", PORT);
+ });
   })
   .catch(err => console.log(err));
+  const PORT = process.env.PORT || 5000;
