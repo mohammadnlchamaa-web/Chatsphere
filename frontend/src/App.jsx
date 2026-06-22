@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import axios from "axios";
 import { io } from "socket.io-client";
 
-const socket = io("http://localhost:5000");
+const socket = io("https://chatsphere-backend-6z66.onrender.com");
 
 export default function App() {
   const [user, setUser] = useState(null);
