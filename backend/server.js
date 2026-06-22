@@ -8,17 +8,26 @@ const { Server } = require("socket.io");
 const app = express();
 const server = http.createServer(app);
 
-/* ================= CORS ================= */
+/* =========================
+   CORS (FIXED FOR VERCEL)
+========================= */
+const allowedOrigins = [
+  "https://chatsphere-mu.vercel.app"
+];
+
 app.use(
   cors({
-    origin: "https://chatsphere-mu.vercel.app",
+    origin: allowedOrigins,
     credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
   })
 );
 
 app.use(express.json());
 
-/* ================= ROUTES ================= */
+/* =========================
+   ROUTES
+========================= */
 const authRoutes = require("./routes/authRoutes");
 const friendRoutes = require("./routes/friendRoutes");
 const messageRoutes = require("./routes/messageRoutes");
@@ -27,12 +36,15 @@ app.use("/api/auth", authRoutes);
 app.use("/api/friends", friendRoutes);
 app.use("/api/messages", messageRoutes);
 
-/* ================= SOCKET ================= */
+/* =========================
+   SOCKET.IO (FIXED CORS)
+========================= */
 const io = new Server(server, {
   cors: {
     origin: "https://chatsphere-mu.vercel.app",
     methods: ["GET", "POST"],
-  },
+    credentials: true
+  }
 });
 
 const Message = require("./models/Message");
@@ -43,7 +55,9 @@ io.on("connection", (socket) => {
 
   socket.on("online", (userId) => {
     if (!userId) return;
+
     onlineUsers.set(userId, socket.id);
+
     io.emit("online_users", Array.from(onlineUsers.keys()));
   });
 
@@ -54,7 +68,7 @@ io.on("connection", (socket) => {
       const msg = await Message.create({
         senderId,
         receiverId,
-        message,
+        message
       });
 
       const receiverSocket = onlineUsers.get(receiverId);
@@ -67,6 +81,14 @@ io.on("connection", (socket) => {
     }
   });
 
+  socket.on("typing", ({ senderId, receiverId }) => {
+    const receiverSocket = onlineUsers.get(receiverId);
+
+    if (receiverSocket) {
+      io.to(receiverSocket).emit("typing", { senderId });
+    }
+  });
+
   socket.on("disconnect", () => {
     for (let [uid, sid] of onlineUsers.entries()) {
       if (sid === socket.id) {
@@ -74,11 +96,14 @@ io.on("connection", (socket) => {
         break;
       }
     }
+
     io.emit("online_users", Array.from(onlineUsers.keys()));
   });
 });
 
-/* ================= LOGIN + REGISTER ================= */
+/* =========================
+   AUTH (LOGIN + REGISTER)
+========================= */
 const User = require("./models/User");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
@@ -86,22 +111,22 @@ const jwt = require("jsonwebtoken");
 /* REGISTER */
 app.post("/api/auth/register", async (req, res) => {
   try {
-    console.log("REGISTER HIT:", req.body);
-
     const { username, email, password } = req.body;
 
     const exists = await User.findOne({ email });
-    if (exists) return res.status(400).json({ message: "User exists" });
+    if (exists) {
+      return res.status(400).json({ message: "User already exists" });
+    }
 
     const hashed = await bcrypt.hash(password, 10);
 
     const user = await User.create({
       username,
       email,
-      password: hashed,
+      password: hashed
     });
 
-    res.json({ message: "Registered", user });
+    res.json({ message: "User registered", user });
   } catch (err) {
     console.log("REGISTER ERROR:", err);
     res.status(500).json({ message: err.message });
@@ -111,15 +136,17 @@ app.post("/api/auth/register", async (req, res) => {
 /* LOGIN */
 app.post("/api/auth/login", async (req, res) => {
   try {
-    console.log("LOGIN HIT:", req.body);
-
     const { email, password } = req.body;
 
     const user = await User.findOne({ email });
-    if (!user) return res.status(400).json({ message: "User not found" });
+    if (!user) {
+      return res.status(400).json({ message: "User not found" });
+    }
 
     const match = await bcrypt.compare(password, user.password);
-    if (!match) return res.status(400).json({ message: "Wrong password" });
+    if (!match) {
+      return res.status(400).json({ message: "Wrong password" });
+    }
 
     if (!process.env.JWT_SECRET) {
       return res.status(500).json({ message: "JWT_SECRET missing" });
@@ -132,16 +159,19 @@ app.post("/api/auth/login", async (req, res) => {
       user: {
         id: user._id,
         username: user.username,
-        email: user.email,
-      },
+        email: user.email
+      }
     });
+
   } catch (err) {
     console.log("LOGIN ERROR:", err);
     res.status(500).json({ message: err.message });
   }
 });
 
-/* ================= START SERVER ================= */
+/* =========================
+   START SERVER
+========================= */
 const PORT = process.env.PORT || 5000;
 
 mongoose
